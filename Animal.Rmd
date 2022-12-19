@@ -1,0 +1,293 @@
+---
+title: "Interpretation of Data - EDA for Animal Rescue dataset"
+author: "Swaraj Randhvan (K00278451)"
+date: "18/12/2022"
+output: word_document
+---
+
+    ```{r setup, include= FALSE}
+    knitr::opts_chunk$set(
+    echo = FALSE,
+    message = FALSE,
+    warning = FALSE,
+    out.width = "100%",
+    out.height = "500px"
+    )
+    ```
+
+## Problem Statement
+
+The Dublin Fire Brigade responds to hundreds of requests to rescue animals each year. Our task is to know if there are common features among the rescue operations which suggest the estimated cost of incident as well as to find the answers of following queries,
+1 which kind of the animals are being rescued the most?
+2 What is the most frequent act of rescue?
+3 Where do animals usually encounter problem?
+
+## Solution Summary
+
+To accomplish this task we are using Exploratory Data Analysis (EDA). Exploratory Data Analysis (EDA) is a key process in the development of the model to decide the operation is big or small based on features like age,address and repair cost,etc.
+
+##1. Loading Libraries
+
+We are loading R libraries such as, tidyverse, forcats,dplyr,skimr,stringr. which we are using in our EDA process,
+
+```{r include=FALSE}
+
+#install.packages("zoo")                             # Install & load zoo package
+#install.packages("viridis")
+#install.packages("ggplot2")
+#install.packages("ggrepel")
+#install.packages("wordcloud")
+#install.packages("wordcloud2")
+#install.packages("tm")
+#install.packages("wordcloud") # word-cloud generator 
+#install.packages("RColorBrewer") # color palettes
+#install.packages("ggwordcloud")
+#install.packages("XQuartz")
+
+
+
+library(tidyverse)
+library(forcats)
+library(dplyr)
+library(skimr)
+library(stringr)
+library("zoo")
+library(lubridate)
+library("scales")
+library(data.table)
+library(viridis)
+library(ggplot2)
+library(ggrepel)
+library(wordcloud)
+library(tm)
+
+require("tm")
+require("wordcloud")
+require("RColorBrewer")
+require(magrittr)
+require(ggwordcloud)
+```
+
+## 2. Loading the Data set
+
+The provided data is in CSV format.
+
+```{r echo=FALSE}
+data_set <- read.csv('animal_dataset.csv')
+head(data_set, n=5)
+
+```
+
+## 3.Exploring the Dataset
+
+```{r echo=FALSE, warning=FALSE}
+#str(data_set)
+skim(data_set)
+
+```
+
+## 3.1 Overview of Dataset
+
+We have our dataset of 8939 rows and 8 columns such as,
+
+1.  DateTimeOfCall: Date of the incidence.
+2.  HourlyNotionalCost :Hourly cost of service
+3.  IncidentNotionalCost:IncidentNotionalCost is the estimated cost of each          rescue act. 
+4.  AnimalGroupParent: Parent group of animal.
+5.  PropertyCategory: Category of property.
+6.  SpecialServiceTypeCategory : Represents kind of trouble these animals was in.
+7.  SpecialServiceType : service type.
+8.  Area : Area of incident 
+
+Dataset has some NULL values in our dataset but it's not showing in skim function becouse they are not in standerd null format i.e NA. so,we are converting NULL values to NA.
+
+## 4. Data Wrangling
+```{r}
+# replacing with standard missing value type, NA
+data_set <- data_set %>%
+  mutate(IncidentNotionalCost = replace(IncidentNotionalCost,IncidentNotionalCost == "NULL", NA))
+data_set$IncidentNotionalCost <- as.numeric(data_set$IncidentNotionalCost)
+data_set$HourlyNotionalCost <- as.numeric(data_set$HourlyNotionalCost)
+
+skim(data_set)
+view(data_set)
+
+```
+
+
+
+All columns are examined now and we can see 63 values are missing in IncidentNotationalCost. We are replacing null values with mean of the IncidentNotationalCost column. 
+
+```{r}
+df <- data_set
+df$IncidentNotionalCost[is.na(df$IncidentNotionalCost)]<-mean(df$IncidentNotionalCost,na.rm=TRUE)
+skim(df)
+
+```
+
+
+As a part of cleaning the data there are some columns have malicious data , we have to remove and fix the punctuation errors,Spelling Mistakes,removing special characters in the AnimalGroupParent, PropertyCategory, Area.
+
+```{r echo=FALSE}
+clean_data <- df %>%
+  mutate(AnimalGroupParent = recode(AnimalGroupParent, 'Ca$' = 'Cat', 'Ra^&it' = 'Rabbit', 'Bi^&' = 'Bird','Ca&' = 'Cat','Bir*'='Bird','D+g'='Dog'), 
+    PropertyCategory = recode(PropertyCategory, 'Dwe!!ing' = 'Dwelling', 'Dwe^&ing' = 'Dwelling'),
+    Area = recode(Area, 'Drumco"!ra' = 'Drumcondra', 'Ta!!aght' = 'Tallaght', 'Donnybr$*k' = 'Donnybrook','Rathm&^es'='Rathmines'))
+
+view(clean_data)
+
+clean_data %>% head()
+```
+
+
+
+## 5 Data Exploration using visualisation
+
+### 5.1 Pattern of the animal rescue acts yearly and monthly
+
+```{r echo=FALSE}
+colmn <- c("Date","Time")
+
+clean_data <-
+  tidyr::separate(
+    data = clean_data,
+    col = DateTimeOfCall,
+    sep = " ",
+    into = colmn,
+    remove = FALSE
+  )
+
+
+View(clean_data)
+
+```
+```{r}
+clean_data$Date = as.Date(clean_data$Date, "%d-%m-%Y")
+clean_data$Date <- as.POSIXct(clean_data$Date)
+
+view(clean_data)
+
+ ggplot(clean_data, aes(Date, ..count..)) + 
+    geom_histogram() +
+    theme_bw() + xlab(NULL) +
+    scale_x_datetime(breaks = date_breaks("12 months"),
+                     labels = date_format("%Y")
+                      )
+
+
+```
+
+From the diagram above, we could observe that between 2009 and 2019, the total number of annual animal rescue act fluctuated around 250. In 2022, the number of act increase 50% by that of 2019. Then we will take a look at the pattern of monthly animal rescue act.
+
+```{r}
+
+setDT(clean_data)[, Month_Yr := format(as.Date(Date), "%Y-%m") ]
+setDT(clean_data)[, Month := format(as.Date(Date), "%m") ]
+setDT(clean_data)[, Yr := format(as.Date(Date), "%Y") ]
+
+view(clean_data)
+
+#clean_data$Yr_Mnt <- fromat(as.Date(clean_data$Date),"%Y-%m")
+#clean_data$Mnt <- format(as.Date(clean_data$Date),"%m")
+#clean_data$Yr <- format(as.Date(clean_data$Date),"%Y")
+ggplot(clean_data, aes(x=Month,..count..,group=Yr,color=Yr,label = Yr)) + 
+    geom_line(aes(fill=..count..), stat="count", binwidth=10) +
+    viridis::scale_color_viridis(discrete = TRUE, name="") +
+    theme(legend.position="none") +
+    ggtitle("Monthly trend of animal rescue incidents each year")
+```
+We could see there is a parabola trend as shown in the diagram. The period between May and August could be seen as a fastigium of animal rescue. In addition to that, by looking at the deepest orange curve, which is the count of animal act in 2020. For half of the year, the amount acts taken is greater than previous 11 years. We could say more rescue events happened in warmer day incomparable to cold months.
+
+### 5.1.1 Age Vs Repair cost
+
+```{r echo=FALSE}
+#####
+docs = Corpus(VectorSource(clean_data$AnimalGroupParent)) 
+
+# Convert the text to lower case
+docs1 = tm_map(docs, 
+        content_transformer(tolower))
+  
+# Remove numbers
+docs1 = tm_map(docs1, removeNumbers)
+  
+# Remove white spaces
+docs1 = tm_map(docs1, stripWhitespace)
+
+dtm = TermDocumentMatrix(docs)
+m = as.matrix(dtm)
+v = sort(rowSums(m), decreasing = TRUE)
+d = data.frame(word = names(v), freq = v)
+head(d, 10)
+
+
+```
+```{r}
+wordcloud(words = d$word, 
+          freq = d$freq,
+          min.freq = 1, 
+          max.words = 200,
+          random.order = FALSE, 
+          rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+```
+
+graph shows that the most rescued animal is Cat, secound Dog and third is Bird.
+
+### 5.1.2 What is the most frequent act of rescue?
+
+There is a variable call 'SpecialServiceType', from which we could have a look at the kind of trouble these animals was in.
+
+```{r echo=FALSE}
+docs = Corpus(VectorSource(clean_data$SpecialServiceType)) 
+
+# Convert the text to lower case
+docs1 = tm_map(docs, 
+        content_transformer(tolower))
+  
+# Remove numbers
+ docs1 = tm_map(docs1, removeNumbers)
+  
+# Remove white spaces
+ docs1 = tm_map(docs1, stripWhitespace)
+
+dtm = TermDocumentMatrix(docs1)
+m = as.matrix(dtm)
+v = sort(rowSums(m), decreasing = TRUE)
+d = data.frame(word = names(v), freq = v)
+head(d, 10)
+```
+```{r}
+wordcloud(words = clean_data$SpecialServiceType, 
+          freq = d$freq,
+          min.freq = 1, 
+          max.words = 800,
+          random.order = FALSE, 
+          rot.per = 0.35, 
+          colors = brewer.pal(8, "Dark2"))
+
+
+```
+
+The WordCloud above shows that the most common kind of rescue operation is "Wild Animal rescue from height." Second on the list was "Animal Assistance involving livestock - Other action," with "Animal rescue from water - Domestic pet" coming in third.
+
+### 5.1.3 Where do animals usually encounter problem?
+After 'What', 'Which' questions, it comes to 'Where' problem, where does animals get in trouble the most?
+
+```{r echo=FALSE}
+ ggplot(clean_data, aes(clean_data$PropertyCategory, ..count..)) + 
+    geom_bar() +
+    theme_bw() + xlab(NULL)
+```
+
+This box plot shows,Dwelling is the most common place, which is nearly twice as many as the count for Outdoor.
+
+## 7. Findings
+
+From the above analysis and visualization, we could conclude that:
+
+1.    The trend pattern: the number of annual animal rescue acts fluctuate between 2009 and 2019,       and increased 25% in 2020 compared to 2019. Besides, the period between May and August is         the fastigium of animal rescue.
+2.    Cat is the animal being rescued the most and animals are often get in trouble with height.
+3.    More rescue events happened in warmer day incomparable to cold months.
+4.    Dwelling is the most common place, which is nearly twice as many as the count for Outdoor         rescue operations carried out.
+5.    Boat and Other residential property are the place where lowest rescue operation happens. 
