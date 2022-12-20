@@ -1,0 +1,385 @@
+---
+title: "Interpretation of Data - EDA for fraud claim dataset"
+author: "Ganesh Nimkar (K00277641)"
+date: "4/15/2022"
+output: word_document
+---
+
+    ```{r setup, include= FALSE}
+    knitr::opts_chunk$set(
+    echo = FALSE,
+    message = FALSE,
+    warning = FALSE,
+    out.width = "100%",
+    out.height = "500px"
+    )
+    ```
+
+## Problem Statement
+
+In this assignment we need to provide insight and correlation between other attributes with a fraud flag attribute.This insight helpful for developing a predictive model to predict the claim is a fraudulent or real by exploring motor fraud cases for an insurance company based on a given data set.
+
+## Solution Summary
+
+To accomplish this task we are using Exploratory Data Analysis (EDA). Exploratory Data Analysis (EDA) is a key process in the development of the model to detect the fraud based on features like age,address and repair cost,etc.
+
+##1. Loading Libraries
+
+We are loading R libraries such as, tidyverse, forcats,dplyr,skimr,stringr. which we are using in our EDA process,
+
+```{r include=FALSE}
+library(tidyverse)
+library(forcats)
+library(dplyr)
+library(skimr)
+library(stringr)
+```
+
+## 2. Loading the Data set
+
+The provided data is in CSV format.
+
+```{r echo=FALSE}
+data_set <- read.csv('assignment_data.csv')
+head(data_set, n=5)
+```
+
+## 3.Exploring the Dataset
+
+```{r echo=FALSE, warning=FALSE}
+str(data_set)
+skim(data_set)
+```
+
+## 3.1 Overview of Dataset
+
+We have our dataset of 1000 rows and 7 columns such as,
+
+1.  Driver: Represents the First and Last name of the driver.
+
+2.  Age: Age of driver.
+
+3.  Address: Contains House number,Address Line1 , Address Line2 of the driver.
+
+4.  Passenger 1: Represents to the passenger who was with the driver when the accident had happened or the incident for was submitted for claim.
+
+5.  Passenger 2 : Represent the second passenger who was with the driver.
+
+6.  Repaircost : Represent the repair cost of the claim.
+
+7.  FraudFlag : Indicates the claim is a fraud or genuine.
+
+## 4. Data Wrangling
+
+Most of the values in the "passenger1" and "passenger2" attributes are missing. these attributes are in the character form. This attributes store the passenger names, and missing values mean that no passengers were present. As a result, other columns are examined and no missing values are discovered.
+
+```{r}
+
+data_set$passenger1 <- as.character(data_set$passenger1)
+data_set$passenger2 <- as.character(data_set$passenger2)
+data_set$driver <- as.character(data_set$driver)
+
+
+```
+
+As a part of cleaning the address column , we have removed the house number and we fix the punctuation errors in the address by locating the index and typing in the correct address
+
+```{r echo=FALSE}
+clean_data <-data_set %>% mutate(new_address = address %>% str_remove_all('[0-9]')%>% str_trim(side = "left"))
+```
+
+```{r include=FALSE}
+str_locate(clean_data$new_address,"[:punct:]") %>% view()
+str_locate(clean_data$new_address,"\\$") %>% view()
+```
+
+```{r echo=FALSE}
+clean_data <- clean_data %>% mutate(new_address = case_when(
+  new_address == "SHAN*ON GARDENS" ~ "SHANNON GARDENS",
+  new_address == "COR/IB LODGE" ~ "CORRIB LODGE",
+  new_address == "BAR&OW GLADE" ~ "BARROW GLADE",
+  new_address == "CO$RIB VIEW" ~ "CORRIB VIEW",
+  new_address == "BAR&OW GLADE" ~ "BARROW GLADE",
+  new_address == "BAR%OW DRIVE" ~ "BARROW DRIVE",
+  new_address == "BLAC#WATER GROVE" ~ "BACKWATER GROOVE",
+  new_address == "DOD/ER LODGE" ~ "DODDER LODGE",
+  new_address == "BLACK%ATER GLADE" ~ "BACKWATER GLADE",
+  new_address == "SL%NEY LODGE" ~ "SLANEY LODGE",
+  new_address == "L%FFEY LODGE" ~ "LIFFEY LODGE",
+  TRUE ~ new_address
+)) 
+clean_data %>% select(new_address) %>% head()
+```
+
+There are some spelling mistakes in fraudflag column. we are correcting them
+
+```{r echo=FALSE}
+clean_data <- clean_data %>% mutate(fraudFlag = case_when(
+  fraudFlag == "FAL&E" ~ "FALSE",
+  fraudFlag == "T^UE" ~ "TRUE",
+  
+  TRUE ~ fraudFlag
+)) 
+clean_data %>% select(fraudFlag) %>% head()
+```
+
+We are removing special characters from diver name and repair cost column.
+
+```{r}
+clean_data$driver <- str_replace_all(clean_data$driver, pattern = "[^[:alnum:][ ]]",replacement = "")
+clean_data %>%
+    view()
+
+clean_data$repaircost <- str_replace_all(clean_data$repaircost, pattern = "[^[:alnum:][ ]]",replacement = "K")
+clean_data %>%
+    view()
+
+clean_data %>% select(driver) %>% head()
+clean_data %>% select(repaircost) %>% head()
+
+```
+
+# 5. Feature Engineering
+
+Feature engineering is an important aspect of model development. Here, we are developing new features from the data set that will help us in the aid of data exploration.
+
+Dividig the whole ages into specific groups such as Seniors,Adults,Youth and Childeren
+
+```{r echo=FALSE}
+clean_data<-clean_data %>% mutate(agegroup = case_when(
+  age >= 60 & age <= 100 ~ 'Seniors',
+  age >= 30 & age <= 59  ~ 'Adults',
+  age >= 17  & age <= 30  ~ 'Youth',
+  age >= 0  & age <= 16   ~ 'Childeren'))
+clean_data %>% select(agegroup) %>% head()
+```
+
+splitting new_address column into two part such as Address Line 1 and Address Line 2
+
+```{r echo=FALSE}
+clean_data<- clean_data %>% separate(new_address, c('AddLine_1', 'AddLine_2'), sep=" ",remove=FALSE)
+clean_data %>% select(AddLine_1,AddLine_2) %>% head()
+```
+
+A new column was introduced to know the how many passengers are in car at the time of accident.
+
+```{r echo=FALSE}
+clean_data<- clean_data %>%mutate(passengernumber = case_when((passenger1!=""&passenger2=="") |(passenger1==""&passenger2!="")~ 1,
+                                            passenger1!=""& passenger2!=""~ 2,
+                                                   TRUE ~ 0))
+clean_data %>% select(passengernumber,passenger1,passenger2) %>% head()
+```
+
+We then create a new column that contains both Passenger Names
+
+```{r echo=FALSE}
+clean_data$passengers<- case_when(clean_data$passengernumber==2 ~ paste(clean_data$passenger1,clean_data$passenger2,sep=" , "),
+                            TRUE ~ paste(clean_data$passenger1))
+clean_data %>% select(passengers) %>% head()
+```
+
+A new binary feature was feature was introduced as to check if the driver name has been appeared in passenger names.
+
+1- if the name was appeared, 0- if the name did not appear
+
+```{r echo=FALSE}
+clean_data<-clean_data %>% mutate(driveraspassenger = case_when(
+  clean_data$driver %in% clean_data$passengers ~ 1, 
+  TRUE ~ 0))
+clean_data %>% select(driveraspassenger) %>% head()
+```
+
+```{r}
+
+```
+
+## 6 Data Exploration using visualisation
+
+### 6.1 Dataset Skewness
+
+```{r echo=FALSE}
+
+ggplot(data = clean_data) +
+  geom_bar(mapping = aes(x = fraudFlag))+
+    labs(title = "Overall FraudFlag values", x = "Falg", y = "Number of claims",
+         subtitle = "") +
+    scale_alpha_continuous()+
+    theme_bw()
+```
+
+The data that has been given to us is highly skewed as out of 1000 cases of claim,only nearby 100 cases are Fraud cases.This gives us difficulty in predicting the accuracy of results.
+
+### 6.1.1 Age Vs Repair cost
+
+```{r echo=FALSE}
+clean_data %>%filter(fraudFlag %in% "TRUE") %>%  ggplot(mapping = aes(x=repaircost, fill = agegroup))+
+  geom_bar(position = "dodge2")+
+  labs(title = "Age Group vs Repair Cost")+
+    theme_bw()
+```
+
+graph shows thatthe age group of Adults are dominant in all price ranges expect approx 1k,Where the Youth are more.
+
+### 6.1.2 Totalnum of passengers vs frraudflag
+
+```{r echo=FALSE}
+clean_data$passengernumber <- as.factor(clean_data$passengernumber)
+clean_data %>% ggplot(mapping = aes(x=passengernumber,fill = fraudFlag))+
+  geom_bar(position ="dodge2" )+
+  labs(title = "Total Number of Passenger v/s count grouped by Fraud Flag")
+```
+
+This graph describes,The passenger number increases the fraud cases also increases. We can see the highest number of fraud cases are from the claim where two passengers traveling.
+
+### 6.1.3 Age count grouped by fraud flag
+
+```{r echo=FALSE}
+ggplot(clean_data, aes(fraudFlag,age)) + geom_boxplot()+
+    labs(title = "Correlation of Age with fraudflag", x = "Falg", y = "Age",
+         subtitle = "") +
+    theme_bw()
+```
+
+This box plot shows, In the genuine claim cases age group mainly from 30 to 55 ,where as for the Fraud cases it varies from 25 to 40.This shows that fraud cases are mainly attempted by Youth and Adults.
+
+### 6.1.4 New_address v/s count grouped by fraud flag = true
+
+```{r echo=FALSE}
+
+addr_fraud <- clean_data %>%filter(fraudFlag %in% "TRUE") %>% 
+  mutate(new_address = fct_lump(new_address, n = 7)%>%fct_infreq() %>%  fct_rev()) %>% 
+  group_by(new_address)
+
+addr_fraud %>% ggplot(mapping = aes(y=new_address,fill = fraudFlag))+
+  geom_bar(position ="dodge2" )+
+    theme_bw()
+```
+
+The graph tells us that most of the fruad cases are deteced from Seven Lawns, followed by Severn Terrace .
+
+### 6.1.5 Repair cost vs Fraud Flag
+
+```{r echo=FALSE, message=FALSE}
+
+clean_data %>% ggplot(mapping = aes(x=repaircost, fill=fraudFlag))+
+  geom_bar(position = "fill")+labs(title = "Repair cost v/s Proportion Grouped by Fraud Flag",x = "Repaircost", y = "Proportion")+
+    theme_bw()
+    
+  
+```
+
+This bar graph shows that, the most of the fraud cases has been attempted for repair cost that approximately 500 and the followed by 1000
+
+### 6.1.6 Address Line 1 v/s no of claims grouped by fraud flag = true
+
+```{r echo=FALSE}
+l <- clean_data %>%filter(fraudFlag %in% "TRUE") %>% 
+  mutate(AddLine_1 = fct_lump(AddLine_1, n = 7)%>%fct_infreq() %>%  fct_rev()) %>% 
+  group_by(AddLine_1)
+l %>% ggplot(mapping = aes(y=AddLine_1))+
+  geom_bar(position ="dodge2" )+ 
+    theme_bw()+
+    labs(title="Address Line 1 v/s no of fraud claims",x= "number of fraud claims",y="Address line 1")
+```
+
+This graph shows that, majority of the fraud cases are from Severen followed by Thames and Shannon
+
+### 6.1.7 Address Line 2 v/s no of claims grouped by fraud flag = true
+
+```{r echo=FALSE}
+
+addr2 <- clean_data %>%filter(fraudFlag %in% "TRUE") %>% 
+  mutate(AddLine_2 = fct_lump(AddLine_2, n = 7)%>%fct_infreq() %>%  fct_rev()) %>% 
+  group_by(AddLine_2)
+addr2 %>% ggplot(mapping = aes(y=AddLine_2))+
+  geom_bar(position ="dodge2" )+
+    theme_bw()+
+    labs(title = "Address Line 2 v/s no of fraud claims", x= "Number of claims", y ="Address line 2")
+```
+
+We can see that Highest number i.e over 20+ of Fraud cases has been deteced from Terrace followed by Terrace and Gardens
+
+### 6.1.8 Driver Age vs repair cost
+
+```{r echo=FALSE}
+clean_data %>%filter(fraudFlag %in% "TRUE") %>%ggplot(mapping = aes(x=repaircost, y=age))+
+  geom_boxplot()+
+  labs(title = "Age vs repair cost")+
+  theme_bw()+
+    labs(title="Driver Age vs Repair cost", x= "Driver Age", y ="Repair cost")
+```
+
+This boxplot shows some interesting facts such as,
+
+Repair costs Driver age 1k 25-35 2k,500 33-34
+
+This data confirms our findings with that of previous plots.
+
+### 6.1.9 Drivers as passengers
+
+From the feature engineered variable , we can see that
+
+```{r echo=FALSE}
+sum(clean_data$peopleasd)
+```
+
+There are 210 drivers name that comes in the passenger list.
+
+```{r eval=FALSE, include=FALSE}
+clean_data$peopleasd <- as.factor(clean_data$peopleasd)
+clean_data%>% ggplot(mapping = aes(x=peopleasd, fill = fraudFlag))+
+  geom_bar(position = "dodge2")+
+  labs(title = "Drivers who are appearing as Passengers", x = "Driver as a     passenger", y="Number of claims")+
+    theme_bw()
+```
+
+Even with the high skewness of data, it's shown people who appears as passengers in different cases has high chance of being Frauds.
+
+### 6.1.10 Address vs Agegroup ,Group ed by Fraud Flag
+
+we wan to check which age group people are attempting fraud cases
+
+```{r echo=FALSE}
+
+w <- clean_data %>% filter(AddLine_2 %in% c("LAWNS","TERRACE","GARDENS")) %>% 
+  group_by(agegroup,fraudFlag)
+w %>% ggplot(mapping = aes(y=fraudFlag, fill = agegroup))+
+  geom_bar(position ="dodge2" ) + facet_wrap(~w$AddLine_2)+
+    theme_bw()
+
+```
+
+This graph clearly shown, Citizens belonging to age group of Adults and Youth mainly commit fraud cases as well as mainly adults commits fraud cases in Gardens and Lawns, where as it is youth in Terrace.
+
+### 6.1.11 Adult and youth age group grouped by fraud flag
+
+Previous data tells us that Youth and Adults has major contribution in fraud flags ,We can cross verify whole scenario.
+
+```{r echo=FALSE}
+
+r<- clean_data %>% mutate(new_address = as_factor(new_address) %>% fct_infreq()) %>% 
+  filter(agegroup %in% c("Adults","Youth") & fraudFlag %in% "TRUE" ) %>% 
+  group_by(agegroup) 
+r %>% ggplot(mapping = aes(y=agegroup, fill = fraudFlag))+
+  geom_bar(position = "dodge2")+
+    labs(title="Adult and Youth vs Number of Fraud claims",x='Percentage of claim',y='Age Group')+
+    theme_bw()
+```
+
+In this graph, we can see that over 60% of the fraud cases are commited by the Adults and nearly 40% are by Youth.
+
+## 7. Findings
+
+In this EDA process we found below findings,
+
+1.  Drivers which are under Youth and Adults age group are commiting more Fraud cases,So we can low prioritize Senior citizens from suspicius cases.
+
+2.  Most of the Fraud cases fall under for the price range of 500 and then followed by 1k.
+
+3.  In Address Line 1 - SEVERN ,THAMES or SHANNON and In Address Line 2 - LAWNS,TERRACE,GARDENS are more prone to fraud cases. So, We can say claims from these addresses to a suspicious list.
+
+4.  The fraud's are mainly detected by the number of passengers, as the number of passenger increases is more chances for fraud claim.
+
+5.  After doing feature engineering graphs plotted, it is clear that the customers who are repeatedly appears in passenger list in for other cases are susceptible for frauds.
+
+We can conclude that,By keeping the above things in consideration we can categories upcoming cases for detect if its a fraud case or not as well as what are the potential factors for the fraud cases.
